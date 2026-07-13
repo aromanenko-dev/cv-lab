@@ -16,6 +16,10 @@ Usage:
 """
 
 import os
+import random
+import shutil
+from pathlib import Path
+
 from roboflow import Roboflow
 from ultralytics import YOLO
 
@@ -28,6 +32,33 @@ version = project.version(1)  # verify this is the current version on the Univer
 dataset = version.download("yolov8")
 
 print(f"Dataset downloaded to: {dataset.location}")
+
+# --- Step 1b: split train into train/val (Roboflow export omits valid/) ---
+root = Path(dataset.location)
+train_images_dir = root / "train" / "images"
+train_labels_dir = root / "train" / "labels"
+val_images_dir = root / "valid" / "images"
+val_labels_dir = root / "valid" / "labels"
+val_images_dir.mkdir(parents=True, exist_ok=True)
+val_labels_dir.mkdir(parents=True, exist_ok=True)
+
+image_files = sorted(train_images_dir.glob("*"))
+random.seed(42)
+random.shuffle(image_files)
+
+n_val = max(1, int(len(image_files) * 0.15))
+val_files = image_files[:n_val]
+
+print(f"Total images: {len(image_files)}")
+print(f"Moving {n_val} images (15%) to a new validation split...")
+
+for img_path in val_files:
+    label_path = train_labels_dir / (img_path.stem + ".txt")
+    shutil.move(str(img_path), str(val_images_dir / img_path.name))
+    if label_path.exists():
+        shutil.move(str(label_path), str(val_labels_dir / label_path.name))
+
+print(f"Train: {len(image_files) - n_val} images | Val: {n_val} images")
 
 # --- Step 2: fine-tune YOLO26 nano on it ---
 model = YOLO("yolo26n.pt")  # start from COCO-pretrained weights, not from scratch
